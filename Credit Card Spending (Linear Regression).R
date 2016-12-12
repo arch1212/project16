@@ -40,8 +40,8 @@ summary(skewness)
 boxcoxtrans <- preProcess(ccPred, method = "BoxCox")
 boxcoxtrans
 
-# 23 continuous predictors were not transformed due to zero or negative values 
-# 5 predictors were transformed with lambda values between -1 and 1 
+# 29 continuous predictors were not transformed due to zero or negative values 
+# 8 predictors were transformed with lambda values between -1 and 1 
 
 ccPred <- predict(boxcoxtrans, ccPred)
 
@@ -67,7 +67,7 @@ percentVariance[1:3]
 plot(percentVariance, xlab = "Components", ylab = "Cumulative Percent of Variance", type = "b")
 
 # The amount of variability summarized by components drop sharply, 
-# with no one component accounting for more than 17% of the variance. 
+# with no one component accounting for more than 21% of the variance. 
 # This profile indicates that the structure of the data is contained 
 # in a much smaller number of dimensions than the number of dimensions of the original space. 
 
@@ -80,7 +80,7 @@ corrplot(correlation, order = "hclust")
 # There are many strong positive correlations (indicated by the large, dark blue circles)
 
 # Removing Strongly piecewise-correlated predictors
-pwcp <- findCorrelation(correlation, cutoff = 0.8)
+pwcp <- findCorrelation(correlation, cutoff = 0.9)
 names(ccContPred[pwcp])
 ccContPred <- ccContPred[,-pwcp]
 
@@ -134,8 +134,8 @@ lmFitAllPred <- train(total.card.spend ~.,
 lmFitAllPred
 
 # 10-Fold Cross Validation Estimates
-# RMSE = 255.4
-# R2 = 0.49
+# RMSE = 255.12
+# Rsquared = 0.50
 
 
 ########## Model 2: Reduced Data
@@ -147,80 +147,79 @@ lmFitRedPred <- train(total.card.spend ~.,
 lmFitRedPred
 
 # 10-Fold Cross Validation Estimates
-# RMSE = 254.85
-# R2 = 0.498
+# RMSE = 254.74
+# Rsquared = 0.50
 
-########## Model 3: Using Stepwise selection to select the best model
-set.seed(144)
-lmFit1 <- train(total.card.spend~.,
-                data = reducedtrain,
-                method = "lmStepAIC",
-                trControl = trainControl(method = "cv", number = 10))
-lmFit1
-# 10-fold Cross Validation Estimates
-# RMSE
-# R2
+########## Model 4: Using Stepwise selection to select the best model
 
+lmFitAllPred <- lm(total.card.spend~., data = fulltrain)
+lmFit2 <- stepAIC(lmFitAllPred, direction = "both")
+summary(lmFit2)
 
-#-------------------------------------------
+# 10-Fold Cross Validation Estimates of Performance
+trFit <- train(total.card.spend ~ ed + income + debtinc + creddebt + 
+                 othdebt + hometype + carvalue + carbought + reason + card + 
+                 cardbenefit + card2 + card2fee + carditems + card2items + 
+                 equipten + voice + forward + ownpc + churn, data = fulltrain,
+                 method = "lm", trControl = trainControl(method = "cv", number = 10))
+trFit
+#RMSE      Rsquared 
+#247.46    0.53
 
+########## Model 5: Removing Influential Observations
 
+w <- abs(rstudent(lmFit2)) > 3 | abs(cooks.distance(lmFit2)) > 4/nrow(lmFit2$model)
+InfObs <- which(w)
+InfObs
+fulltrainUpdated <- fulltrain[-InfObs,]
 
-
-
-lmFitAll <- lm(total.card.spend ~., data = fulltrain)
-lmFitSw <- stepAIC(lmFitAll, direction = "both")
-
-lmFit3 <- train(total.card.spend ~ retire + inccat + debtinc + creddebt + othdebt + 
-                  hometype + carcatvalue + carbought + reason + card + cardbenefit + 
-                  card2 + card2fee + carditems + card2items + equipten + voice + 
-                  forward + ownpc, data = fulltrain, method = "lm", 
-                  trControl = trainControl(method = "cv", number = 10))
-lmFit3
-# 10-fold Cross Validation Estimates
-# RMSE = 249.6
-# R2 = 0.51
-
-
-########## Model 4: Removing Influential Observations
-#ls(lmFit1)
-#w <- abs(rstudent(lmFit1)) > 3 | abs(cooks.distance(lmFit1)) > 4/nrow(lmFit1$model)
-#InfObs <- which(w)
-#InfObs
-#fulltrainwoInf <- fulltrain[-InfObs,]
-
-#set.seed(144)
-#lmFit4 <- train()
-#lmFit4
-
-# 10-fold Cross Validation Estimates
-# RMSE
-# R2
+# 10-Fold Cross Validation Estimates of Performance
+trFit2 <- train(total.card.spend ~ ed + income + debtinc + creddebt + 
+                  othdebt + hometype + carvalue + carbought + reason + card + 
+                  cardbenefit + card2 + card2fee + carditems + card2items + 
+                  equipten + voice + forward + ownpc + churn, data = fulltrainUpdated,
+                  method = "lm", trControl = trainControl(method = "cv", number = 10))
+trFit2
+#RMSE      Rsquared 
+#163.37    0.61
 
 #################################################
 # Model Selection
 #################################################
+
+#Comparing the Cross-validation Performance, trFit is selected
+
+# Training on complete training Data
+lmFit3 <- lm(total.card.spend ~ ed + income + debtinc + creddebt + 
+               othdebt + hometype + carvalue + carbought + reason + card + 
+               cardbenefit + card2 + card2fee + carditems + card2items + 
+               equipten + voice + forward + ownpc + churn, data = fulltrainUpdated)
+summary(lmFit3)
+# Adjusted R-squared:  0.6139
+
 model <- lmFit3
 
 #################################################
 # Test Set Prediction and Results
 ################################################# 
 
-lmPred <- predict(model, fulltestPred)
+lmPred <- predict(model, newdata = fulltestPred)
 defaultSummary(data.frame(obs = fulltestOut, pred = lmPred))
 
+# RMSE = 229.26
+# Rsquared = 0.53
 
 #################################################
 # Checking model Assumptions using Visualizations
 #################################################
 
 # Observed vs Predicted Values
-xyplot(fulltrainOut ~ predict(model),
+xyplot(fulltrainUpdated[,c("total.card.spend")] ~ predict(model),
        type = c("p", "g"),
        xlab = "Predicted", ylab = "Observed")
 
 # Residual Plots
-xyplot(resid(lmFit1) ~ predict(model),
+xyplot(resid(model) ~ predict(model),
        type = c("p", "g"),
        xlab = "Predicted", ylab = "Residuals")
 
@@ -228,7 +227,7 @@ xyplot(resid(lmFit1) ~ predict(model),
 # Determining variable imortance
 ################################################# 
 
-importance <- varImp(model, scale=FALSE)
+importance <- varImp(trFit2, scale=FALSE)
 
 # summarize importance
 print(importance)
